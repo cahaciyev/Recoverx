@@ -83,7 +83,8 @@ class RecoveryDestScreen(Screen):
         self.start_btn.configure(state="disabled")
 
     def _browse(self) -> None:
-        path = filedialog.askdirectory(title="Select recovery destination")
+        self.app.focus_force()
+        path = filedialog.askdirectory(title="Select recovery destination", parent=self.app)
         if path:
             self.path_entry.delete(0, "end")
             self.path_entry.insert(0, path)

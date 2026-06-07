@@ -66,9 +66,11 @@ class WelcomeScreen(Screen):
         self.app.show("device_select")
 
     def _open_image(self) -> None:
+        self.app.focus_force()
         path = filedialog.askopenfilename(
             title="Open disk image",
             filetypes=[("Disk images", "*.img *.dd *.raw *.iso *.bin"), ("All files", "*.*")],
+            parent=self.app,
         )
         if not path:
             return

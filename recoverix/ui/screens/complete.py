@@ -76,10 +76,13 @@ class CompleteScreen(Screen):
         sc = self.app.scanner
         if not r:
             return
+        self.app.focus_force()
         path = filedialog.asksaveasfilename(
             title="Export report", defaultextension=".json",
             filetypes=[("JSON report", "*.json"), ("Text report", "*.txt")],
-            initialfile=f"recoverix_report_{datetime.now():%Y%m%d_%H%M%S}.json")
+            initialfile=f"recoverix_report_{datetime.now():%Y%m%d_%H%M%S}.json",
+            parent=self.app,
+        )
         if not path:
             return
         report = {
