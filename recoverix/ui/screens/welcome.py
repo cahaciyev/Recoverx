@@ -1,14 +1,13 @@
 """Welcome screen."""
 from __future__ import annotations
 
-from tkinter import filedialog
-
 import customtkinter as ctk
 
 from .. import theme
 from ..base import Screen
 from ..widgets import Banner, Card, Heading, ghost_button, primary_button
 from ...core.devices import device_from_image
+from ...core.dialogs import ask_open_file
 from ... import __version__
 
 
@@ -66,11 +65,9 @@ class WelcomeScreen(Screen):
         self.app.show("device_select")
 
     def _open_image(self) -> None:
-        self.app.focus_force()
-        path = filedialog.askopenfilename(
+        path = ask_open_file(
             title="Open disk image",
-            filetypes=[("Disk images", "*.img *.dd *.raw *.iso *.bin"), ("All files", "*.*")],
-            parent=self.app,
+            filter_str="Disk images (*.img;*.dd;*.raw;*.iso;*.bin)|*.img;*.dd;*.raw;*.iso;*.bin|All files (*.*)|*.*",
         )
         if not path:
             return

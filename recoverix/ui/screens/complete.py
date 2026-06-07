@@ -5,7 +5,6 @@ import json
 import os
 import subprocess
 from datetime import datetime
-from tkinter import filedialog
 
 import customtkinter as ctk
 
@@ -13,6 +12,7 @@ from .. import theme
 from ..base import Screen
 from ..widgets import Banner, Card, Heading, StatChip, ghost_button, primary_button
 from ...core.devices import describe_size
+from ...core.dialogs import ask_save_file
 
 
 class CompleteScreen(Screen):
@@ -76,12 +76,11 @@ class CompleteScreen(Screen):
         sc = self.app.scanner
         if not r:
             return
-        self.app.focus_force()
-        path = filedialog.asksaveasfilename(
-            title="Export report", defaultextension=".json",
-            filetypes=[("JSON report", "*.json"), ("Text report", "*.txt")],
-            initialfile=f"recoverix_report_{datetime.now():%Y%m%d_%H%M%S}.json",
-            parent=self.app,
+        path = ask_save_file(
+            title="Export report",
+            filter_str="JSON report (*.json)|*.json|Text report (*.txt)|*.txt",
+            default_ext="json",
+            initial_file=f"recoverix_report_{datetime.now():%Y%m%d_%H%M%S}.json",
         )
         if not path:
             return

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import threading
-from tkinter import filedialog
 
 import customtkinter as ctk
 
@@ -11,6 +10,7 @@ from ..base import Screen
 from ..widgets import Banner, Card, Heading, ghost_button, primary_button
 from ...core.devices import describe_size
 from ...core import recovery
+from ...core.dialogs import ask_directory
 
 
 class RecoveryDestScreen(Screen):
@@ -83,8 +83,7 @@ class RecoveryDestScreen(Screen):
         self.start_btn.configure(state="disabled")
 
     def _browse(self) -> None:
-        self.app.focus_force()
-        path = filedialog.askdirectory(title="Select recovery destination", parent=self.app)
+        path = ask_directory(title="Select recovery destination")
         if path:
             self.path_entry.delete(0, "end")
             self.path_entry.insert(0, path)
