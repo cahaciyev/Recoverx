@@ -8,6 +8,7 @@ import customtkinter as ctk
 from .. import theme
 from ..base import Screen
 from ..widgets import Banner, Card, Heading, ghost_button, primary_button
+from ..disk_details import DiskDetailsWindow
 from ...core.devices import Device, Partition, describe_size, list_devices
 
 
@@ -95,6 +96,10 @@ class DeviceSelectScreen(Screen):
         title = dev.name or dev.id
         ctk.CTkLabel(head, text=title, font=theme.font(15, "bold")).pack(side="left")
 
+        # details button
+        ghost_button(head, "Detallar", lambda d=dev: self._show_details(d),
+                     width=90, height=30).pack(side="right", padx=(6, 0))
+
         # disk type badge
         dtype = dev.disk_type_label
         dtype_color = {"HDD": "#3b82f6", "SATA SSD": "#8b5cf6",
@@ -154,6 +159,9 @@ class DeviceSelectScreen(Screen):
             if p.free_bytes is not None:
                 sub += f"   |   {describe_size(p.free_bytes)} free"
             self._row(card, dev, p, label, sub)
+
+    def _show_details(self, dev: Device) -> None:
+        DiskDetailsWindow(self.app, dev)
 
     def _row(self, parent, dev: Device, part, title: str, subtitle: str) -> None:
         row = ctk.CTkFrame(parent, fg_color=theme.SURFACE, corner_radius=8)

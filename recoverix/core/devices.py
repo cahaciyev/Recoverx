@@ -50,9 +50,20 @@ $disks = Get-Disk | ForEach-Object {
     busTypePhys = if ($phys) { [string]$phys.BusType } else { '' }
     mediaType = if ($phys) { [string]$phys.MediaType } else { '' }
     health = if ($phys) { [string]$phys.HealthStatus } else { '' }
+    firmware = if ($phys) { [string]$phys.FirmwareVersion } else { '' }
+    allocatedSize = if ($phys -and $null -ne $phys.AllocatedSize) { [int64]$phys.AllocatedSize } else { -1 }
+    spindleSpeed = if ($phys -and $null -ne $phys.SpindleSpeed) { [int64]$phys.SpindleSpeed } else { -1 }
+    operationalStatus = if ($phys) { [string]($phys.OperationalStatus -join ', ') } else { '' }
+    physicalSectorSize = if ($phys -and $null -ne $phys.PhysicalSectorSize) { [int]$phys.PhysicalSectorSize } else { -1 }
     wear = if ($rel -and $null -ne $rel.Wear) { [int]$rel.Wear } else { -1 }
     temperature = if ($rel -and $null -ne $rel.Temperature) { [int]$rel.Temperature } else { -1 }
+    temperatureMax = if ($rel -and $null -ne $rel.TemperatureMax) { [int]$rel.TemperatureMax } else { -1 }
     powerOnHours = if ($rel -and $null -ne $rel.PowerOnHours) { [int64]$rel.PowerOnHours } else { -1 }
+    readErrorsTotal = if ($rel -and $null -ne $rel.ReadErrorsTotal) { [int64]$rel.ReadErrorsTotal } else { -1 }
+    writeErrorsTotal = if ($rel -and $null -ne $rel.WriteErrorsTotal) { [int64]$rel.WriteErrorsTotal } else { -1 }
+    startStopCycles = if ($rel -and $null -ne $rel.StartStopCycleCount) { [int64]$rel.StartStopCycleCount } else { -1 }
+    loadUnloadCycles = if ($rel -and $null -ne $rel.LoadUnloadCycleCount) { [int64]$rel.LoadUnloadCycleCount } else { -1 }
+    manufactureDate = if ($rel -and $rel.ManufactureDate) { [string]$rel.ManufactureDate } else { '' }
     sectorSize = [int]$d.LogicalSectorSize
     isReadOnly = [bool]$d.IsReadOnly
     partitions = @($parts)
@@ -94,6 +105,17 @@ class Device:
     power_on_hours: int   # -1=unknown
     sector_size: int
     is_read_only: bool
+    firmware: str = ""
+    allocated_bytes: int = -1       # space currently in use; -1=unknown
+    spindle_speed: int = -1         # RPM (0 = SSD/no spindle); -1=unknown
+    operational_status: str = ""    # OK / Lost Communication …
+    physical_sector_size: int = -1  # -1=unknown
+    temperature_max: int = -1       # highest recorded °C; -1=unknown
+    read_errors_total: int = -1     # -1=unknown
+    write_errors_total: int = -1    # -1=unknown
+    start_stop_cycles: int = -1     # -1=unknown
+    load_unload_cycles: int = -1    # -1=unknown
+    manufacture_date: str = ""      # raw string from reliability counter
     partitions: List[Partition] = field(default_factory=list)
     is_image: bool = False
 
@@ -151,6 +173,32 @@ class Device:
         if pct >= 50:
             return "#d97706"
         return "#dc2626"
+
+    @property
+    def power_on_days(self) -> Optional[float]:
+        """Total power-on time expressed in days. None if unknown."""
+        if self.power_on_hours is None or self.power_on_hours < 0:
+            return None
+        return self.power_on_hours / 24.0
+
+    @property
+    def usage_text(self) -> str:
+        """Human-readable lifetime usage, e.g. '521 days 8 hours' (in Azerbaijani)."""
+        if self.power_on_hours is None or self.power_on_hours < 0:
+            return "Naməlum"
+        days = self.power_on_hours // 24
+        hours = self.power_on_hours % 24
+        if days >= 365:
+            years = days // 365
+            rem_days = days % 365
+            return f"{years} il {rem_days} gün ({self.power_on_hours:,} saat)"
+        if days > 0:
+            return f"{days} gün {hours} saat ({self.power_on_hours:,} saat)"
+        return f"{hours} saat"
+
+    @property
+    def is_spinning_disk(self) -> bool:
+        return self.spindle_speed > 0
 
 
 def _human(num: int) -> str:
@@ -226,6 +274,17 @@ def list_devices() -> List[Device]:
                 power_on_hours=int(d.get("powerOnHours") if d.get("powerOnHours") is not None else -1),
                 sector_size=int(d.get("sectorSize") or 512),
                 is_read_only=bool(d.get("isReadOnly")),
+                firmware=(d.get("firmware") or "").strip(),
+                allocated_bytes=int(d.get("allocatedSize") if d.get("allocatedSize") is not None else -1),
+                spindle_speed=int(d.get("spindleSpeed") if d.get("spindleSpeed") is not None else -1),
+                operational_status=(d.get("operationalStatus") or "").strip(),
+                physical_sector_size=int(d.get("physicalSectorSize") if d.get("physicalSectorSize") is not None else -1),
+                temperature_max=int(d.get("temperatureMax") if d.get("temperatureMax") is not None else -1),
+                read_errors_total=int(d.get("readErrorsTotal") if d.get("readErrorsTotal") is not None else -1),
+                write_errors_total=int(d.get("writeErrorsTotal") if d.get("writeErrorsTotal") is not None else -1),
+                start_stop_cycles=int(d.get("startStopCycles") if d.get("startStopCycles") is not None else -1),
+                load_unload_cycles=int(d.get("loadUnloadCycles") if d.get("loadUnloadCycles") is not None else -1),
+                manufacture_date=(d.get("manufactureDate") or "").strip(),
                 partitions=parts,
             )
         )
