@@ -79,7 +79,7 @@ class DeviceSelectScreen(Screen):
         q = self.search.get().strip().lower()
 
         for dev in self._devices:
-            if q and q not in (dev.name + dev.media_type + dev.bus_type).lower() and not any(
+            if q and q not in (dev.name + dev.media_type + dev.bus_type + dev.disk_type_label).lower() and not any(
                 q in ((p.file_system or "") + (p.label or "")).lower() for p in dev.partitions
             ):
                 continue
@@ -89,32 +89,58 @@ class DeviceSelectScreen(Screen):
         card = Card(self.list)
         card.pack(fill="x", padx=8, pady=8)
 
+        # --- header row: name left, disk-type badge right ---
         head = ctk.CTkFrame(card, fg_color="transparent")
-        head.pack(fill="x", padx=16, pady=(14, 6))
+        head.pack(fill="x", padx=16, pady=(14, 4))
         title = dev.name or dev.id
         ctk.CTkLabel(head, text=title, font=theme.font(15, "bold")).pack(side="left")
-        tags = []
-        if dev.media_type:
-            tags.append(dev.media_type)
-        if dev.bus_type:
-            tags.append(dev.bus_type)
-        if dev.partition_style:
-            tags.append(dev.partition_style)
-        ctk.CTkLabel(head, text="   ".join(tags), font=theme.font(11),
-                     text_color=theme.MUTED).pack(side="right")
 
-        meta = []
-        meta.append(describe_size(dev.size_bytes))
+        # disk type badge
+        dtype = dev.disk_type_label
+        dtype_color = {"HDD": "#3b82f6", "SATA SSD": "#8b5cf6",
+                       "M.2 NVMe SSD": "#6366f1", "SSD": "#8b5cf6",
+                       "USB Drive": "#0891b2", "Disk Image": "#6b7280"}.get(dtype, "#6b7280")
+        ctk.CTkLabel(head, text=f"  {dtype}  ", font=theme.font(11, "bold"),
+                     fg_color=dtype_color, text_color="#ffffff",
+                     corner_radius=6).pack(side="right", padx=(6, 0))
+        if dev.partition_style:
+            ctk.CTkLabel(head, text=dev.partition_style, font=theme.font(11),
+                         text_color=theme.MUTED).pack(side="right", padx=6)
+
+        # --- health bar row ---
+        health_row = ctk.CTkFrame(card, fg_color="transparent")
+        health_row.pack(fill="x", padx=16, pady=(0, 4))
+
+        pct = dev.health_percent
+        if pct is not None:
+            ctk.CTkLabel(health_row, text="Health:", font=theme.font(11),
+                         text_color=theme.MUTED).pack(side="left")
+            bar = ctk.CTkProgressBar(health_row, width=130, height=10, corner_radius=5)
+            bar.pack(side="left", padx=(6, 4))
+            bar.set(pct / 100.0)
+            bar.configure(progress_color=dev.health_color)
+            ctk.CTkLabel(health_row, text=f"{pct}%", font=theme.font(11, "bold"),
+                         text_color=dev.health_color).pack(side="left")
+        elif dev.health:
+            color = {"healthy": theme.SUCCESS, "warning": theme.WARNING,
+                     "unhealthy": theme.DANGER}.get(dev.health.lower(), theme.MUTED)
+            ctk.CTkLabel(health_row, text=f"Health: {dev.health}", font=theme.font(11),
+                         text_color=color).pack(side="left")
+
+        # extra details: size / serial / temperature / hours
+        meta = [describe_size(dev.size_bytes)]
         if dev.serial:
             meta.append(f"S/N {dev.serial[:24]}")
-        if dev.health:
-            meta.append(f"Health: {dev.health}")
+        if dev.temperature > 0:
+            meta.append(f"{dev.temperature} °C")
+        if dev.power_on_hours > 0:
+            meta.append(f"{dev.power_on_hours:,} h on")
         ctk.CTkLabel(card, text="   |   ".join(meta), font=theme.font(11),
-                     text_color=theme.MUTED).pack(anchor="w", padx=16)
+                     text_color=theme.MUTED).pack(anchor="w", padx=16, pady=(0, 6))
 
         if dev.is_ssd:
             Banner(card, "SSD detected: if TRIM has erased deleted data, recovery may be impossible.",
-                   kind="warning").pack(fill="x", padx=16, pady=(8, 4))
+                   kind="warning").pack(fill="x", padx=16, pady=(4, 4))
 
         # whole-disk row
         self._row(card, dev, None,

@@ -21,6 +21,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 $disks = Get-Disk | ForEach-Object {
   $d = $_
   $phys = Get-PhysicalDisk | Where-Object { $_.DeviceId -eq ([string]$d.Number) } | Select-Object -First 1
+  $rel = $null
+  if ($phys) { try { $rel = Get-StorageReliabilityCounter -PhysicalDisk $phys -ErrorAction Stop } catch {} }
   $parts = Get-Partition -DiskNumber $d.Number | ForEach-Object {
     $p = $_
     $vol = $null
@@ -45,8 +47,12 @@ $disks = Get-Disk | ForEach-Object {
     size = [int64]$d.Size
     partitionStyle = [string]$d.PartitionStyle
     busType = [string]$d.BusType
+    busTypePhys = if ($phys) { [string]$phys.BusType } else { '' }
     mediaType = if ($phys) { [string]$phys.MediaType } else { '' }
     health = if ($phys) { [string]$phys.HealthStatus } else { '' }
+    wear = if ($rel -and $null -ne $rel.Wear) { [int]$rel.Wear } else { -1 }
+    temperature = if ($rel -and $null -ne $rel.Temperature) { [int]$rel.Temperature } else { -1 }
+    powerOnHours = if ($rel -and $null -ne $rel.PowerOnHours) { [int64]$rel.PowerOnHours } else { -1 }
     sectorSize = [int]$d.LogicalSectorSize
     isReadOnly = [bool]$d.IsReadOnly
     partitions = @($parts)
@@ -78,10 +84,14 @@ class Device:
     manufacturer: str
     serial: str
     size_bytes: int
-    media_type: str  # HDD / SSD / Unspecified / Image
-    bus_type: str
+    media_type: str       # HDD / SSD / Unspecified / Image
+    bus_type: str         # from Get-Disk (may show SCSI for NVMe)
+    bus_type_phys: str    # from Get-PhysicalDisk (NVMe / SATA / USB / MMC …)
     partition_style: str  # MBR / GPT / RAW
-    health: str
+    health: str           # Healthy / Warning / Unhealthy
+    wear: int             # % endurance consumed (0=new, 100=end-of-life); -1=unknown
+    temperature: int      # °C; -1=unknown
+    power_on_hours: int   # -1=unknown
     sector_size: int
     is_read_only: bool
     partitions: List[Partition] = field(default_factory=list)
@@ -93,7 +103,54 @@ class Device:
 
     @property
     def is_removable(self) -> bool:
-        return (self.bus_type or "").upper() in ("USB", "SD", "MMC")
+        bt = (self.bus_type_phys or self.bus_type or "").upper()
+        return bt in ("USB", "SD", "MMC")
+
+    @property
+    def disk_type_label(self) -> str:
+        """Human-readable disk type: HDD / SATA SSD / M.2 NVMe SSD / USB Drive …"""
+        if self.is_image:
+            return "Disk Image"
+        bt = (self.bus_type_phys or "").upper()
+        mt = (self.media_type or "").upper()
+        if bt in ("USB",):
+            return "USB Drive"
+        if bt in ("SD", "MMC"):
+            return "SD / MMC Card"
+        if "SSD" in mt or mt == "SSD":
+            if bt == "NVME":
+                return "M.2 NVMe SSD"
+            if bt == "SATA":
+                return "SATA SSD"
+            return "SSD"
+        if "HDD" in mt or mt == "HDD":
+            return "HDD"
+        # fall back to media_type text if present
+        if self.media_type and self.media_type.lower() not in ("unspecified", ""):
+            return self.media_type
+        return "Disk"
+
+    @property
+    def health_percent(self) -> Optional[int]:
+        """Health as 0-100 %. None if not available."""
+        if self.wear >= 0:
+            return max(0, 100 - self.wear)
+        if self.health:
+            return {"healthy": 100, "warning": 50, "unhealthy": 10}.get(
+                self.health.lower(), None
+            )
+        return None
+
+    @property
+    def health_color(self) -> str:
+        pct = self.health_percent
+        if pct is None:
+            return "#6b7280"
+        if pct >= 80:
+            return "#16a34a"
+        if pct >= 50:
+            return "#d97706"
+        return "#dc2626"
 
 
 def _human(num: int) -> str:
@@ -161,8 +218,12 @@ def list_devices() -> List[Device]:
                 size_bytes=int(d.get("size") or 0),
                 media_type=d.get("mediaType") or "",
                 bus_type=d.get("busType") or "",
+                bus_type_phys=d.get("busTypePhys") or "",
                 partition_style=d.get("partitionStyle") or "",
                 health=d.get("health") or "",
+                wear=int(d.get("wear") if d.get("wear") is not None else -1),
+                temperature=int(d.get("temperature") if d.get("temperature") is not None else -1),
+                power_on_hours=int(d.get("powerOnHours") if d.get("powerOnHours") is not None else -1),
                 sector_size=int(d.get("sectorSize") or 512),
                 is_read_only=bool(d.get("isReadOnly")),
                 partitions=parts,
@@ -187,8 +248,12 @@ def device_from_image(path: str) -> Optional[Device]:
         size_bytes=size,
         media_type="Image",
         bus_type="FILE",
+        bus_type_phys="",
         partition_style="",
         health="",
+        wear=-1,
+        temperature=-1,
+        power_on_hours=-1,
         sector_size=512,
         is_read_only=True,
         partitions=[],
