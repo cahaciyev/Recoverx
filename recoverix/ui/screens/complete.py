@@ -46,8 +46,9 @@ class CompleteScreen(Screen):
         btns = ctk.CTkFrame(wrap, fg_color="transparent")
         btns.pack(fill="x", pady=16)
         primary_button(btns, "Open Folder", self._open_folder, width=170).pack(side="left")
-        ghost_button(btns, "Export Report", self._export, width=170).pack(side="left", padx=10)
-        ghost_button(btns, "New Scan", lambda: self.app.show("welcome"), width=170).pack(side="left")
+        primary_button(btns, "Recover More Files", self._back_to_results, width=190).pack(side="left", padx=10)
+        ghost_button(btns, "Export Report", self._export, width=160).pack(side="left", padx=(0, 10))
+        ghost_button(btns, "New Scan", lambda: self.app.show("welcome"), width=130).pack(side="left")
 
     def on_show(self) -> None:
         r = self.app.recovery_result
@@ -62,6 +63,10 @@ class CompleteScreen(Screen):
             self.fail_banner.pack(fill="x", pady=6)
         else:
             self.fail_banner.pack_forget()
+
+    def _back_to_results(self) -> None:
+        """Return to the results screen keeping the existing scan intact."""
+        self.app.show("results")
 
     def _open_folder(self) -> None:
         r = self.app.recovery_result

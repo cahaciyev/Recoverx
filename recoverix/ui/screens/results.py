@@ -28,6 +28,7 @@ class ResultsScreen(Screen):
         self._all = []
         self._filtered = []
         self._selected: set[str] = set()
+        self._loaded_session: str = ""   # session_id of currently loaded scan
         self._row_vars: dict[str, ctk.BooleanVar] = {}
         self._preview_img = None
 
@@ -87,6 +88,17 @@ class ResultsScreen(Screen):
 
     def on_show(self) -> None:
         sc = self.app.scanner
+        same_scan = sc is not None and sc.session_id == self._loaded_session
+
+        if same_scan:
+            # Coming back from recovery — keep results & filters, just clear selection.
+            self._selected.clear()
+            self._update_count()
+            self._render()          # re-render rows so checkboxes reflect cleared state
+            return
+
+        # New scan: full reload.
+        self._loaded_session = sc.session_id if sc else ""
         self._all = list(sc.results) if sc else []
         self._selected.clear()
         exts = sorted({c.extension for c in self._all})
