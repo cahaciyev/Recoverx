@@ -1,0 +1,1 @@
+"""Recoverix desktop UI (CustomTkinter)."""

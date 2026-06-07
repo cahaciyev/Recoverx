@@ -1,0 +1,39 @@
+# Build artefacts
+dist/
+build/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# PyInstaller temp
+*.manifest
+
+# Local data (user scan history / logs - never commit personal data)
+*.db
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test temp images (generated at runtime)
+samples/disk-images/*.img
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
