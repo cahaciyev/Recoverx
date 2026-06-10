@@ -7,6 +7,8 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from . import theme
+from . import i18n
+from .i18n import t
 from ..core.logging_setup import get_logger
 from ..core.database import Database
 from ..core.devices import describe_size
@@ -32,6 +34,8 @@ class RecoverixApp(ctk.CTk):
 
         self.db = Database()
         theme.init_appearance(self.db.get_pref("appearance", "dark"))
+        i18n.set_language(self.db.get_pref("language", "en"))
+        self._current = "welcome"
 
         # shared state
         self.source: dict | None = None
@@ -53,15 +57,33 @@ class RecoverixApp(ctk.CTk):
         bar = ctk.CTkFrame(self, height=56, corner_radius=0, fg_color=theme.CARD)
         bar.pack(fill="x", side="top")
         ctk.CTkLabel(bar, text="  Recoverix", font=theme.font(18, "bold")).pack(side="left", padx=12)
-        ctk.CTkLabel(bar, text="read-only - offline", font=theme.font(11),
-                     text_color=theme.MUTED).pack(side="left", padx=8)
+        self._ro_label = ctk.CTkLabel(bar, text=t("read-only - offline"), font=theme.font(11),
+                                      text_color=theme.MUTED)
+        self._ro_label.pack(side="left", padx=8)
 
-        ctk.CTkButton(bar, text="Theme", width=80, height=32, command=self._toggle_theme,
-                      fg_color="transparent", border_width=1, border_color=theme.CARD_BORDER,
-                      text_color=theme.MUTED, hover_color=theme.SURFACE).pack(side="right", padx=8)
-        ctk.CTkButton(bar, text="Privacy & Limits", width=130, height=32, command=self._about,
-                      fg_color="transparent", border_width=1, border_color=theme.CARD_BORDER,
-                      text_color=theme.MUTED, hover_color=theme.SURFACE).pack(side="right", padx=4)
+        # Sun/Moon theme toggle (no text label).
+        self._theme_btn = ctk.CTkButton(
+            bar, text=self._theme_glyph(), width=40, height=32, command=self._toggle_theme,
+            font=theme.font(16), fg_color="transparent", border_width=1,
+            border_color=theme.CARD_BORDER, text_color=theme.MUTED, hover_color=theme.SURFACE)
+        self._theme_btn.pack(side="right", padx=8)
+        # Language selector.
+        self._lang_menu = ctk.CTkOptionMenu(
+            bar, values=[name for name, _ in i18n.LANGUAGES], width=120, height=32,
+            command=self._on_language)
+        self._lang_menu.set(i18n.current_name())
+        self._lang_menu.pack(side="right", padx=6)
+        self._privacy_btn = ctk.CTkButton(
+            bar, text=t("Privacy & Limits"), width=140, height=32, command=self._about,
+            fg_color="transparent", border_width=1, border_color=theme.CARD_BORDER,
+            text_color=theme.MUTED, hover_color=theme.SURFACE)
+        self._privacy_btn.pack(side="right", padx=4)
+
+        # Credit footer (visible on every screen).
+        footer = ctk.CTkFrame(self, height=26, corner_radius=0, fg_color=theme.CARD)
+        footer.pack(fill="x", side="bottom")
+        ctk.CTkLabel(footer, text="Developed by Jaweed", font=theme.font(11, "bold"),
+                     text_color=theme.MUTED).pack(side="right", padx=16, pady=2)
 
         self.container = ctk.CTkFrame(self, fg_color="transparent")
         self.container.pack(fill="both", expand=True)
@@ -76,10 +98,30 @@ class RecoverixApp(ctk.CTk):
 
     # -- navigation --------------------------------------------------------
     def show(self, name: str) -> None:
+        self._current = name
         screen = self.screens[name]
         screen.tkraise()
         if hasattr(screen, "on_show"):
             screen.on_show()
+
+    def _theme_glyph(self) -> str:
+        return "☀" if ctk.get_appearance_mode() == "Dark" else "\U0001F319"  # sun / moon
+
+    def _on_language(self, name: str) -> None:
+        code = i18n.code_for_name(name)
+        i18n.set_language(code)
+        self.db.set_pref("language", code)
+        self._ro_label.configure(text=t("read-only - offline"))
+        self._privacy_btn.configure(text=t("Privacy & Limits"))
+        self.rebuild_screens()
+
+    def rebuild_screens(self) -> None:
+        """Recreate all screens so every string reflects the current language."""
+        cur = self._current
+        for screen in list(self.screens.values()):
+            screen.destroy()
+        self._build_screens()
+        self.show(cur if cur in self.screens else "welcome")
 
     # -- state helpers -----------------------------------------------------
     def set_source(self, device, partition) -> None:
@@ -134,9 +176,7 @@ class RecoverixApp(ctk.CTk):
                 self.scan_logs.append(f"ERROR: {exc}")
                 self.scanner.status = "error"
                 self.after(0, lambda: messagebox.showerror(
-                    "Scan error",
-                    f"Could not scan the source.\n\n{exc}\n\n"
-                    "Physical disks require running Recoverix as Administrator."))
+                    t("Scan error"), t("scan_error_body", err=exc)))
 
         self._scan_thread = threading.Thread(target=worker, daemon=True)
         self._scan_thread.start()
@@ -153,23 +193,21 @@ class RecoverixApp(ctk.CTk):
     def _toggle_theme(self) -> None:
         mode = theme.toggle_mode()
         self.db.set_pref("appearance", mode)
+        self._theme_btn.configure(text=self._theme_glyph())
+        # Native (non-CTk) widgets don't auto-recolour on appearance change.
+        for screen in self.screens.values():
+            if hasattr(screen, "on_theme_changed"):
+                try:
+                    screen.on_theme_changed()
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _about(self) -> None:
-        messagebox.showinfo(
-            "Privacy & Limitations",
-            "Recoverix runs fully offline. It never uploads your files, sends telemetry, "
-            "or writes to the source disk.\n\n"
-            "Limitations:\n"
-            "- Recovery is never guaranteed.\n"
-            "- Overwritten data cannot be recovered.\n"
-            "- SSD TRIM may make deleted data unrecoverable.\n"
-            "- Physically damaged drives may require a lab.\n"
-            "- Fragmented large files may recover only partially.\n\n"
-            "Logs and history are stored locally and can be cleared from the database folder.")
+        messagebox.showinfo(t("Privacy & Limitations"), t("about_body"))
 
     def _on_close(self) -> None:
         if self.scanner and self.scanner.status == "running":
-            if not messagebox.askyesno("Quit", "A scan is running. Stop it and quit?"):
+            if not messagebox.askyesno(t("Quit"), t("A scan is running. Stop it and quit?")):
                 return
             self.scanner.request_cancel()
         try:

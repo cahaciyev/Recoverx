@@ -19,11 +19,17 @@ from typing import Callable, List, Optional
 from .carver import FileCandidate
 from .logging_setup import get_logger
 from .reader import SourceReader
+from .validation import CORRUPT, OK, PARTIAL, UNKNOWN, repair, validate
 
 log = get_logger("recovery")
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _COPY_CHUNK = 4 * 1024 * 1024
+
+# Files of these categories (under the size cap) are loaded fully so they can be
+# repaired and verified as openable before being written.
+_VERIFY_CATEGORIES = {"Images", "Documents"}
+_VERIFY_MAX_BYTES = 128 * 1024 * 1024
 
 
 @dataclass
@@ -33,6 +39,8 @@ class RecoveryResult:
     bytes_written: int = 0
     destination: str = ""
     failures: List[str] = field(default_factory=list)
+    repaired: int = 0      # files whose bytes were fixed so they open
+    unopenable: int = 0    # files written but that still do not open
 
 
 def safe_filename(name: str) -> str:
@@ -120,11 +128,16 @@ def recover_files(
                 break
             out_path = unique_path(dest_dir, safe_filename(cand.name))
             try:
-                written = _write_candidate(reader, cand, out_path)
+                written, open_status, was_repaired = _write_candidate(reader, cand, out_path)
                 result.recovered += 1
                 result.bytes_written += written
+                if was_repaired:
+                    result.repaired += 1
+                if open_status == CORRUPT:
+                    result.unopenable += 1
                 status = "recovered"
-                emit(f"Recovered {os.path.basename(out_path)} ({written:,} bytes)")
+                note = _open_note(open_status, was_repaired)
+                emit(f"Recovered {os.path.basename(out_path)} ({written:,} bytes){note}")
             except OSError as exc:
                 result.failed += 1
                 result.failures.append(f"{cand.name}: {exc}")
@@ -140,11 +153,51 @@ def recover_files(
                 on_progress(i, total, cand.name)
     finally:
         reader.close()
-    emit(f"Recovery finished: {result.recovered} recovered, {result.failed} failed")
+    tail = ""
+    if result.repaired:
+        tail += f", {result.repaired} repaired"
+    if result.unopenable:
+        tail += f", {result.unopenable} not openable"
+    emit(f"Recovery finished: {result.recovered} recovered, {result.failed} failed{tail}")
     return result
 
 
-def _write_candidate(reader: SourceReader, cand: FileCandidate, out_path: str) -> int:
+def _open_note(open_status: str, was_repaired: bool) -> str:
+    bits = []
+    if was_repaired:
+        bits.append("repaired")
+    if open_status == OK:
+        bits.append("opens correctly")
+    elif open_status == PARTIAL:
+        bits.append("partially readable")
+    elif open_status == CORRUPT:
+        bits.append("does not open")
+    return f" - {', '.join(bits)}" if bits else ""
+
+
+def _write_candidate(reader: SourceReader, cand: FileCandidate, out_path: str) -> tuple[int, str, bool]:
+    """Write a candidate to disk.
+
+    Image/document files (under the size cap) are loaded fully, repaired, and
+    validated so the written file opens; larger files are streamed unchanged.
+    Returns ``(bytes_written, open_status, was_repaired)``.
+    """
+    size = cand.size_bytes
+    if cand.category in _VERIFY_CATEGORIES and 0 < size <= _VERIFY_MAX_BYTES:
+        data = _read_range(reader, cand.offset_start, size)
+        data, was_repaired = repair(data, cand.key, cand.extension)
+        with open(out_path, "wb") as fh:
+            fh.write(data)
+        result = validate(data, cand.key, cand.extension)
+        cand.open_status = result.status
+        return len(data), result.status, was_repaired
+
+    # Large or non-repairable type: stream-copy unchanged (no buffering).
+    written = _stream_copy(reader, cand, out_path)
+    return written, UNKNOWN, False
+
+
+def _stream_copy(reader: SourceReader, cand: FileCandidate, out_path: str) -> int:
     remaining = cand.size_bytes
     offset = cand.offset_start
     written = 0
@@ -159,6 +212,21 @@ def _write_candidate(reader: SourceReader, cand: FileCandidate, out_path: str) -
             offset += len(data)
             remaining -= len(data)
     return written
+
+
+def _read_range(reader: SourceReader, offset: int, size: int) -> bytes:
+    """Read exactly ``size`` bytes (best effort) into memory."""
+    out = bytearray()
+    remaining = size
+    pos = offset
+    while remaining > 0:
+        chunk = reader.read_at(pos, min(_COPY_CHUNK, remaining))
+        if not chunk:
+            break
+        out += chunk
+        pos += len(chunk)
+        remaining -= len(chunk)
+    return bytes(out)
 
 
 def read_preview(source_path: str, source_size: int, sector_size: int, cand: FileCandidate, max_bytes: int = 2_000_000) -> bytes:

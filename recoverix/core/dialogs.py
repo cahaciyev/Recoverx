@@ -6,17 +6,32 @@ Windows dialog and returns the selected path via stdout.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from datetime import datetime
 from typing import Optional
 
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def _powershell_exe() -> str:
+    root = os.environ.get("SystemRoot") or r"C:\Windows"
+    p = os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    return p if os.path.isfile(p) else "powershell"
+
 
 def _ps(script: str) -> str:
-    """Run a PowerShell snippet and return its trimmed stdout."""
+    """Run a PowerShell snippet (no console flash) and return its trimmed stdout.
+
+    The native .NET dialog it shows is unaffected by CREATE_NO_WINDOW - only the
+    PowerShell console is suppressed.
+    """
     try:
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            [_powershell_exe(), "-NoProfile", "-NonInteractive",
+             "-ExecutionPolicy", "Bypass", "-Command", script],
             capture_output=True, text=True, timeout=120,
+            creationflags=_CREATE_NO_WINDOW,
         )
         return (r.stdout or "").strip()
     except Exception:  # noqa: BLE001

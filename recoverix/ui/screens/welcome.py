@@ -5,6 +5,7 @@ import customtkinter as ctk
 
 from .. import theme
 from ..base import Screen
+from ..i18n import t
 from ..widgets import Banner, Card, Heading, ghost_button, primary_button
 from ...core.devices import device_from_image
 from ...core.dialogs import ask_open_file
@@ -21,7 +22,7 @@ class WelcomeScreen(Screen):
         ctk.CTkLabel(wrap, text="Recoverix", font=theme.font(40, "bold")).pack(anchor="w")
         ctk.CTkLabel(
             wrap,
-            text="Professional data recovery for HDD, SSD, USB drives, memory cards and disk images.",
+            text=t("Professional data recovery for HDD, SSD, USB drives, memory cards and disk images."),
             font=theme.font(15), text_color=theme.MUTED,
         ).pack(anchor="w", pady=(4, 2))
         ctk.CTkLabel(wrap, text=f"Version {__version__}  -  100% offline  -  read-only scanning",
@@ -32,14 +33,14 @@ class WelcomeScreen(Screen):
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="x", padx=24, pady=24)
 
-        Heading(inner, "Get started",
-                "Choose a physical disk to scan, or open an existing disk image file.").pack(
+        Heading(inner, t("Get started"),
+                t("Choose a physical disk to scan, or open an existing disk image file.")).pack(
             anchor="w", fill="x")
 
         btns = ctk.CTkFrame(inner, fg_color="transparent")
         btns.pack(anchor="w", pady=(18, 4))
-        primary_button(btns, "Start Recovery", self._start, width=200).pack(side="left", padx=(0, 12))
-        ghost_button(btns, "Open Disk Image...", self._open_image, width=200).pack(side="left")
+        primary_button(btns, t("Start Recovery"), self._start, width=200).pack(side="left", padx=(0, 12))
+        ghost_button(btns, t("Open Disk Image..."), self._open_image, width=200).pack(side="left")
 
         feats = ctk.CTkFrame(wrap, fg_color="transparent")
         feats.pack(fill="x", pady=(4, 16))
@@ -50,14 +51,14 @@ class WelcomeScreen(Screen):
         ]:
             c = Card(feats)
             c.pack(side="left", fill="both", expand=True, padx=(0, 12))
-            ctk.CTkLabel(c, text=title, font=theme.font(14, "bold")).pack(anchor="w", padx=16, pady=(14, 2))
-            ctk.CTkLabel(c, text=desc, font=theme.font(12), text_color=theme.MUTED,
+            ctk.CTkLabel(c, text=t(title), font=theme.font(14, "bold")).pack(anchor="w", padx=16, pady=(14, 2))
+            ctk.CTkLabel(c, text=t(desc), font=theme.font(12), text_color=theme.MUTED,
                          wraplength=240, justify="left").pack(anchor="w", padx=16, pady=(0, 16))
 
         Banner(
             wrap,
-            "Safety: Never recover files back onto the same disk you are scanning. "
-            "For failing drives, create a disk image first. Recovery is never guaranteed.",
+            t("Safety: Never recover files back onto the same disk you are scanning. "
+              "For failing drives, create a disk image first. Recovery is never guaranteed."),
             kind="warning",
         ).pack(fill="x")
 
@@ -66,7 +67,7 @@ class WelcomeScreen(Screen):
 
     def _open_image(self) -> None:
         path = ask_open_file(
-            title="Open disk image",
+            title=t("Open disk image"),
             filter_str="Disk images (*.img;*.dd;*.raw;*.iso;*.bin)|*.img;*.dd;*.raw;*.iso;*.bin|All files (*.*)|*.*",
         )
         if not path:

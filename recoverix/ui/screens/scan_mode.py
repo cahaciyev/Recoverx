@@ -5,6 +5,7 @@ import customtkinter as ctk
 
 from .. import theme
 from ..base import Screen
+from ..i18n import t
 from ..widgets import Banner, Card, Heading, ghost_button, primary_button
 from ...core.scanner import MODE_DEEP, MODE_IMAGE, MODE_LOST, MODE_QUICK
 
@@ -29,8 +30,8 @@ class ScanModeScreen(Screen):
 
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=30, pady=(24, 8))
-        Heading(top, "Choose a scan mode",
-                "Each mode reads the source only - it never writes to it.").pack(anchor="w")
+        Heading(top, t("Choose a scan mode"),
+                t("Each mode reads the source only - it never writes to it.")).pack(anchor="w")
 
         self.source_lbl = ctk.CTkLabel(self, text="", font=theme.font(12), text_color=theme.MUTED)
         self.source_lbl.pack(anchor="w", padx=30, pady=(0, 8))
@@ -46,26 +47,26 @@ class ScanModeScreen(Screen):
 
         nav = ctk.CTkFrame(self, fg_color="transparent")
         nav.pack(fill="x", padx=30, pady=(8, 20))
-        ghost_button(nav, "< Back", lambda: self.app.show("device_select"), width=120).pack(side="left")
-        self.continue_btn = primary_button(nav, "Start Scan >", self._start, width=180, state="disabled")
+        ghost_button(nav, f"< {t('Back')}", lambda: self.app.show("device_select"), width=120).pack(side="left")
+        self.continue_btn = primary_button(nav, f"{t('Start Scan')} >", self._start, width=180, state="disabled")
         self.continue_btn.pack(side="right")
 
     def _make_card(self, grid, mode, title, desc, i) -> None:
         card = Card(grid)
         card.grid(row=i // 2, column=i % 2, sticky="nsew", padx=8, pady=8)
-        t = ctk.CTkLabel(card, text=title, font=theme.font(16, "bold"), anchor="w")
-        t.pack(anchor="w", padx=18, pady=(16, 2))
-        d = ctk.CTkLabel(card, text=desc, font=theme.font(12), text_color=theme.MUTED,
-                         wraplength=360, justify="left", anchor="w")
-        d.pack(anchor="w", padx=18, pady=(0, 16))
+        title_lbl = ctk.CTkLabel(card, text=t(title), font=theme.font(16, "bold"), anchor="w")
+        title_lbl.pack(anchor="w", padx=18, pady=(16, 2))
+        desc_lbl = ctk.CTkLabel(card, text=t(desc), font=theme.font(12), text_color=theme.MUTED,
+                                wraplength=360, justify="left", anchor="w")
+        desc_lbl.pack(anchor="w", padx=18, pady=(0, 16))
         self._cards[mode] = card
-        for w in (card, t, d):
+        for w in (card, title_lbl, desc_lbl):
             w.bind("<Button-1>", lambda _e, m=mode: self._select(m))
 
     def on_show(self) -> None:
         src = self.app.source
         if src:
-            self.source_lbl.configure(text=f"Source: {src['name']}  ({src['type']})")
+            self.source_lbl.configure(text=t("Source: {name}  ({type})", name=src['name'], type=src['type']))
         default = self.app.scan_mode_default or (MODE_IMAGE if src and src.get("is_image") else MODE_DEEP)
         self._select(default)
 
@@ -79,11 +80,11 @@ class ScanModeScreen(Screen):
         self.continue_btn.configure(state="normal")
         src = self.app.source or {}
         if mode == MODE_IMAGE and not src.get("is_image"):
-            self.warn.set_text("Disk Image Scan expects an image file. Use 'Open Disk Image' from the welcome screen.")
+            self.warn.set_text(t("Disk Image Scan expects an image file. Use 'Open Disk Image' from the welcome screen."))
         elif src.get("is_ssd"):
-            self.warn.set_text("This is an SSD. If TRIM cleared the data, recovery may be impossible.")
+            self.warn.set_text(t("This is an SSD. If TRIM cleared the data, recovery may be impossible."))
         else:
-            self.warn.set_text("Tip: For failing drives, image the disk first, then scan the image.")
+            self.warn.set_text(t("Tip: For failing drives, image the disk first, then scan the image."))
 
     def _start(self) -> None:
         if not self._selected:

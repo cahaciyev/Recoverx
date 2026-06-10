@@ -16,6 +16,7 @@ from .logging_setup import get_logger
 from .reader import SourceReader
 from .scoring import score_carved
 from .signatures import Signature, load_signatures
+from .validation import bmp_file_size
 
 log = get_logger("carver")
 
@@ -36,6 +37,7 @@ class FileCandidate:
     validated: bool
     original_name: Optional[str] = None
     original_path: Optional[str] = None
+    open_status: str = ""   # set once the file is validated (Openable/Partial/Corrupt)
 
     @property
     def size_bytes(self) -> int:
@@ -163,15 +165,30 @@ class Carver:
         validated = False
         file_end: Optional[int] = None
 
-        # 1) format-specific exact length
-        file_end = self._format_length(reader, off, sig, max_end)
-        if file_end is not None:
-            validated = True
+        # BMP: validate the header and compute the exact size from pixel
+        # geometry. This both drops the many false "BM" matches in random data
+        # and stops real bitmaps being truncated at a later spurious "BM".
+        if sig.key == "bmp":
+            true_size = bmp_file_size(reader.read_at(off, 54))
+            if true_size is None:
+                return None  # not a real BMP header -> discard noise
+            file_end = min(off + true_size, max_end)
+            validated = (off + true_size) <= max_end  # False -> truncated by media end
+        else:
+            # 1) format-specific exact length
+            file_end = self._format_length(reader, off, sig, max_end)
+            if file_end is not None:
+                validated = True
 
         # 2) footer search
         if file_end is None and sig.footers:
             file_end, footer_found = self._search_footer(reader, off, sig, min(max_end, next_off + len(max(sig.footers, key=len)) if next_off < max_end else max_end))
             if file_end is not None:
+                # ZIP/OOXML: the footer marks the START of the End-Of-Central-
+                # Directory record. Extend to include the full EOCD (+comment)
+                # so the archive actually opens.
+                if sig.key == "ooxml":
+                    file_end = self._extend_eocd(reader, file_end, max_end)
                 validated = self._validate(reader, off, file_end, sig)
 
         # 3) bound by next header / max size
@@ -211,13 +228,6 @@ class Carver:
                 if len(hdr) >= 8 and hdr[:4] == b"RIFF":
                     size = struct.unpack_from("<I", hdr, 4)[0]
                     cand_end = off + 8 + size
-                    if off < cand_end <= max_end:
-                        return cand_end
-            if sig.key == "bmp":
-                hdr = reader.read_at(off, 6)
-                if len(hdr) >= 6:
-                    size = struct.unpack_from("<I", hdr, 2)[0]
-                    cand_end = off + size
                     if off < cand_end <= max_end:
                         return cand_end
             if sig.ftyp or sig.key == "mp4":
@@ -275,6 +285,20 @@ class Carver:
             carry_base = pos + want - len(carry)
             pos += want
         return None, False
+
+    def _extend_eocd(self, reader, footer_end: int, max_end: int) -> int:
+        """Grow a ZIP/OOXML end so it spans the whole End-Of-Central-Directory.
+
+        ``footer_end`` points just past the 4-byte ``PK\\x05\\x06`` signature.
+        The EOCD record is 22 bytes plus a trailing comment; truncating it makes
+        the archive unreadable, so we read its comment length and extend.
+        """
+        eocd_start = footer_end - 4
+        rec = reader.read_at(eocd_start, 22)
+        if len(rec) >= 22 and rec[:4] == b"PK\x05\x06":
+            comment_len = struct.unpack_from("<H", rec, 20)[0]
+            return min(eocd_start + 22 + comment_len, max_end)
+        return footer_end
 
     def _validate(self, reader, off, file_end, sig: Signature) -> bool:
         try:

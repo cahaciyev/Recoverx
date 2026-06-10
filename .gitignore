@@ -32,6 +32,12 @@ desktop.ini
 # Test temp images (generated at runtime)
 samples/disk-images/*.img
 
+# Native helper build artefacts (the compiled exe lives in recoverix/resources)
+native/*.obj
+native/*.exe
+native/*.pdb
+native/*.ilk
+
 # IDE
 .idea/
 .vscode/

@@ -7,6 +7,7 @@ import customtkinter as ctk
 
 from .. import theme
 from ..base import Screen
+from ..i18n import t
 from ..widgets import Banner, Card, Heading, ghost_button, primary_button
 from ...core.devices import describe_size
 from ...core import recovery
@@ -22,8 +23,8 @@ class RecoveryDestScreen(Screen):
 
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=30, pady=(24, 8))
-        Heading(top, "Recovery destination",
-                "Choose a SAFE folder on a DIFFERENT disk than the source.").pack(anchor="w")
+        Heading(top, t("Recovery destination"),
+                t("Choose a SAFE folder on a DIFFERENT disk than the source.")).pack(anchor="w")
 
         card = Card(self)
         card.pack(fill="x", padx=30, pady=10)
@@ -32,9 +33,9 @@ class RecoveryDestScreen(Screen):
 
         row = ctk.CTkFrame(inner, fg_color="transparent")
         row.pack(fill="x")
-        self.path_entry = ctk.CTkEntry(row, placeholder_text="Select a destination folder...", height=38)
+        self.path_entry = ctk.CTkEntry(row, placeholder_text=t("Select a destination folder..."), height=38)
         self.path_entry.pack(side="left", fill="x", expand=True)
-        ghost_button(row, "Browse...", self._browse, width=120).pack(side="left", padx=(10, 0))
+        ghost_button(row, t("Browse..."), self._browse, width=120).pack(side="left", padx=(10, 0))
 
         self.info_lbl = ctk.CTkLabel(inner, text="", font=theme.font(12), text_color=theme.MUTED,
                                      anchor="w", justify="left")
@@ -50,12 +51,12 @@ class RecoveryDestScreen(Screen):
 
         self.override_var = ctk.BooleanVar(value=False)
         self.override = ctk.CTkCheckBox(
-            self, text="I understand the risk - allow recovery to the same disk (not recommended)",
+            self, text=t("I understand the risk - allow recovery to the same disk (not recommended)"),
             variable=self.override_var, command=self._validate, font=theme.font(12))
 
         # progress (hidden until running)
         self.prog_card = Card(self)
-        ctk.CTkLabel(self.prog_card, text="Recovering...", font=theme.font(13, "bold")).pack(
+        ctk.CTkLabel(self.prog_card, text=t("Recovering..."), font=theme.font(13, "bold")).pack(
             anchor="w", padx=16, pady=(12, 4))
         self.bar = ctk.CTkProgressBar(self.prog_card, height=14)
         self.bar.pack(fill="x", padx=16, pady=4)
@@ -66,14 +67,15 @@ class RecoveryDestScreen(Screen):
 
         nav = ctk.CTkFrame(self, fg_color="transparent")
         nav.pack(side="bottom", fill="x", padx=30, pady=(8, 20))
-        ghost_button(nav, "< Back", lambda: self.app.show("results"), width=120).pack(side="left")
-        self.start_btn = primary_button(nav, "Start Recovery", self._start, width=200, state="disabled")
+        ghost_button(nav, f"< {t('Back')}", lambda: self.app.show("results"), width=120).pack(side="left")
+        self.start_btn = primary_button(nav, t("Start Recovery"), self._start, width=200, state="disabled")
         self.start_btn.pack(side="right")
 
     def on_show(self) -> None:
         sel = self.app.pending_recovery or []
         total = recovery.estimate_total(sel)
-        self.info_lbl.configure(text=f"{len(sel)} file(s) selected   |   estimated size {describe_size(total)}")
+        self.info_lbl.configure(text=t("{n} file(s) selected   |   estimated size {size}",
+                                       n=len(sel), size=describe_size(total)))
         self._dest = ""
         self.path_entry.delete(0, "end")
         self.override.pack_forget()
@@ -83,7 +85,7 @@ class RecoveryDestScreen(Screen):
         self.start_btn.configure(state="disabled")
 
     def _browse(self) -> None:
-        path = ask_directory(title="Select recovery destination")
+        path = ask_directory(title=t("Select recovery destination"))
         if path:
             self.path_entry.delete(0, "end")
             self.path_entry.insert(0, path)
@@ -102,14 +104,15 @@ class RecoveryDestScreen(Screen):
         needed = recovery.estimate_total(self.app.pending_recovery or [])
 
         self.info_lbl.configure(
-            text=f"{len(self.app.pending_recovery or [])} file(s)   |   need {describe_size(needed)}"
-                 f"   |   free {describe_size(free)}")
+            text=t("{n} file(s)   |   need {need}   |   free {free}",
+                   n=len(self.app.pending_recovery or []),
+                   need=describe_size(needed), free=describe_size(free)))
 
         ok = True
         if on_source:
-            self.same_disk_warn.set_text(
+            self.same_disk_warn.set_text(t(
                 "DANGER: This destination is on the SOURCE disk. Writing here can overwrite the very "
-                "data you are trying to recover. Choose another disk.")
+                "data you are trying to recover. Choose another disk."))
             self.same_disk_warn.pack(fill="x", padx=30, pady=6)
             self.override.pack(anchor="w", padx=30, pady=(0, 4))
             ok = self.override_var.get()
@@ -118,8 +121,9 @@ class RecoveryDestScreen(Screen):
             self.override.pack_forget()
 
         if needed > free:
-            self.space_warn.set_text(
-                f"Not enough free space: need {describe_size(needed)}, only {describe_size(free)} available.")
+            self.space_warn.set_text(t(
+                "Not enough free space: need {need}, only {free} available.",
+                need=describe_size(needed), free=describe_size(free)))
             self.space_warn.pack(fill="x", padx=30, pady=6)
             ok = False
         else:
@@ -165,6 +169,6 @@ class RecoveryDestScreen(Screen):
 
     def _error(self, msg: str) -> None:
         self._running = False
-        self.space_warn.set_text(f"Recovery error: {msg}")
+        self.space_warn.set_text(t("Recovery error: {msg}", msg=msg))
         self.space_warn.pack(fill="x", padx=30, pady=6)
         self.start_btn.configure(state="normal")
